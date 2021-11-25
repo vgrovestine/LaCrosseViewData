@@ -8,12 +8,11 @@ class LaCrosseViewData {
   private $format_date = 'Y-m-d';
   private $format_time = 'H:i';
   private $auth_token = '';
-  private $auth_token_cache_timeout = 24 * 60 * 60;
   private $sensors = array();
   private $fields = array();
   private $hr_obs_duration = 1;
-  public $raw_data = array();
-  public $agg_data = array();
+  private $raw_data = array();
+  private $agg_data = array();
 
 
   function __construct() {
@@ -21,14 +20,14 @@ class LaCrosseViewData {
   }
 
 
-  public function authenticate($email, $password, $token_cache = false) {
-    if(!empty($token_cache) && file_exists($token_cache) && filemtime($token_cache) < ($this->ts_now - $this->auth_token_cache_timeout)) {
-      $this->auth_token = file_get_contents($token_cache);
+  public function authenticate($email, $password, $auth_token_cache_file = false, $auth_token_cache_timeout = 24 * 60 * 60) {
+    if(!empty($auth_token_cache_file) && file_exists($auth_token_cache_file) && 
+      filemtime($auth_token_cache_file) < ($this->ts_now - $auth_token_cache_timeout)) {
+      $this->auth_token = file_get_contents($auth_token_cache_file);
       if(!empty($this->auth_token)) {
         return true;
       }
     }
-
     $url = 'https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword'  
       . '?key=AIzaSyD-Uo0hkRIeDYJhyyIg-TvAv8HhExARIO4';
     if(empty($email)) {
@@ -37,23 +36,18 @@ class LaCrosseViewData {
     if(empty($password)) {
       die('Bailing out of ' . __METHOD__ . ':  Password is required.');
     }
-    
     $curl_response = json_decode($this->curlPost($url, 'email=' . $email . '&password=' . $password . '&returnSecureToken=true'));
     $this->auth_token = $curl_response->idToken;
-
     if(!empty($this->auth_token)) {
-      file_put_contents($token_cache, $this->auth_token);
+      file_put_contents($auth_token_cache_file, $this->auth_token);
     }
-
     return true;
   }
-
 
 
   public function setTimezone($timezone) {
     $this->timezone = $timezone;
   }
-
 
 
   public function setDateTimeFormat($format_datetime = false, $format_date = false, $format_time = false) {
@@ -69,7 +63,6 @@ class LaCrosseViewData {
   }
 
 
-
   public function setDuration($hours_duration) {
     if(!is_numeric($hours_duration) || $hours_duration < 0.1 || $hours_duration > 24) {
       die('Bailing out of ' . __METHOD__ . ':  Obs duration must be a number between 0.1 (6 minutes) and 24 hours.');
@@ -78,7 +71,6 @@ class LaCrosseViewData {
     $this->hr_obs_duration = $hours_duration;
     return true;
   }
-
 
 
   public function setSensors($sensors) {
@@ -97,7 +89,6 @@ class LaCrosseViewData {
   }
 
 
-
   public function setFields($fields) {
     if(!is_array(($fields))) {
       $fields = explode(',', $fields);
@@ -113,17 +104,14 @@ class LaCrosseViewData {
   }
 
 
-
   public function getRawData() {
     return $this->raw_data;
   }
 
 
-
   public function getAggregateData() {
     return $this->agg_data;
   }
-
 
 
   public function isAuthenticated() {
@@ -134,12 +122,10 @@ class LaCrosseViewData {
   }
 
 
-
   private function retrieveLocations() {
     $url = 'https://lax-gateway.appspot.com/_ah/api/lacrosseClient/v1.1/active-user/locations';
     return json_decode($this->curlGet($url, $this->auth_token), true);
   }
-
 
 
   private function retrieveSensors($location_id) {
@@ -149,10 +135,9 @@ class LaCrosseViewData {
   }
 
 
-
-  private function retrieveSensorFeed($device_id) {
+  private function retrieveSensorFeed($sensor_id) {
     $url = 'https://ingv2.lacrossetechnology.com/api/v1.1/active-user/device-association/ref.user-device.'
-      . $device_id . '/feed?aggregates=ai.ticks.1&types=spot'
+      . $sensor_id . '/feed?aggregates=ai.ticks.1&types=spot'
       . (empty($this->fields) ? : '&fields=' . implode(',', $this->fields))
       . '&tz=' . $this->timezone
       . '&from=' . ($this->ts_now - ($this->hr_obs_duration * 60 * 60))
@@ -161,71 +146,65 @@ class LaCrosseViewData {
   }
 
 
-
   public function retrieveSensorData($hr_obs_duration = 1) {
     $this->setDuration($hr_obs_duration);
     date_default_timezone_set($this->timezone);
-    $retrieveSensorData = array();
+    $x = array();
     $locations = $this->retrieveLocations();
     foreach($locations['items'] as $l) {
       $sensors = $this->retrieveSensors($l['id']);
       $locations['items']['sensors'] = $sensors;
-      foreach($sensors['items'] as $d) {
-        foreach($this->sensors as $d_id) {
-          if(strcasecmp($d['sensor']['serial'], $d_id) == 0) {
-            $data = $this->retrieveSensorFeed($d['id']);
-            $retrieveSensorData[] = array(
+      foreach($sensors['items'] as $s) {
+        foreach($this->sensors as $s_id) {
+          if(strcasecmp($s['sensor']['serial'], $s_id) == 0) {
+            $data = $this->retrieveSensorFeed($s['id']);
+            $x[] = array(
               'location_name' => $l['name'],
               'location_id' => $l['id'],
-              'device_name' => $d['sensor']['type']['name'],
-              'device_description' => $d['sensor']['type']['description'],
-              'device_serial' => $d['sensor']['serial'],
-              'device_id' => $d['sensor']['id'], 
-              'fields' => $data['ref.user-device.' . $d['id']]['ai.ticks.1']['fields']
+              'sensor_name' => $s['sensor']['type']['name'],
+              'sensor_description' => $s['sensor']['type']['description'],
+              'sensor_serial' => $s['sensor']['serial'],
+              'sensor_id' => $s['sensor']['id'], 
+              'fields' => $data['ref.user-device.' . $s['id']]['ai.ticks.1']['fields']
             );
           }
         }
       }
     }
     $this->raw_data = $locations;
-    $this->agg_data = $retrieveSensorData;
-
-    return $retrieveSensorData;
+    $this->agg_data = $x;
+    return $x;
   }
 
 
-
   public function aggregateSensorData() {
-    $data = $this->agg_data;
-
+    $tmp_data = $this->agg_data;
     $x = array();
-
-    for($k = 0; $k < count($data); $k++) {
-      foreach($data[$k] as $dataKey => $dataValue) {
+    for($k = 0; $k < count($tmp_data); $k++) {
+      foreach($tmp_data[$k] as $dataKey => $dataValue) {
         if(strcasecmp($dataKey, 'fields') === 0) {
-          $tmpSeries = array();
+          $tmp_series = array();
           foreach($dataValue as $fieldKey => $fieldValue) {
-            $tmpSeries[$fieldKey] = array(
+            $tmp_series[$fieldKey] = array(
               'unit' => $fieldValue['unit'], 
               'unit_abbrev' => $this->abbreviateUnit(($fieldValue['unit'])),
               'source' => array()
             );
             for($j = 0; $j < count($fieldValue['values']); $j++) {
-              $tmpMeasurement = array(
+              $tmp_measurement = array(
                 'ts' => $fieldValue['values'][$j]['u'], 
                 'measurement' => $fieldValue['values'][$j]['s']
               );
-              $tmpSeries[$fieldKey]['source'][] = $tmpMeasurement;
+              $tmp_series[$fieldKey]['source'][] = $tmp_measurement;
             }
           }
-          $x[$data[$k]['device_serial']]['fields'] = $tmpSeries;
+          $x[$tmp_data[$k]['sensor_serial']]['fields'] = $tmp_series;
         }
         else {
-          $x[$data[$k]['device_serial']][$dataKey] = $dataValue;
+          $x[$tmp_data[$k]['sensor_serial']][$dataKey] = $dataValue;
         }
       }
     }
-
     foreach($x as $xKey => $xValue) {
       foreach($xValue['fields'] as $fieldKey => $fieldValue) {
         $min = $max = array('ts' => false, 'measurement' => false, 'datetime' => false);
@@ -279,12 +258,9 @@ class LaCrosseViewData {
         }
       }
     }
-
     $this->agg_data = $x;
-
     return $x;
   }
-
 
 
   private function abbreviateUnit($unit) {
@@ -324,11 +300,9 @@ class LaCrosseViewData {
   }
 
 
-
   public function prepareObservation($text) {
     return preg_replace_callback('/\{([0-9a-z\.]+)\}/i', 'self::replaceObservationDataCallback', $text);
   }
-
 
 
   public function replaceObservationDataCallback($matches) {
@@ -361,7 +335,6 @@ class LaCrosseViewData {
   }
 
 
-
   public function sendObservationToEmail($sender, $recipient, $subject, $message) {
     $headers = array(
       'From: ' .  $sender,
@@ -383,7 +356,6 @@ class LaCrosseViewData {
 
   // TO DO: Twitter posting
   // public function sendObservationToTwitter($oauth, $tweet) {}
-
 
 
   private function curlGet($url, $bearer_token = false) {
@@ -408,7 +380,6 @@ class LaCrosseViewData {
     curl_close($handler);
     return $response;
   }
-
 
 
   private function curlPost($url, $post_fields, $bearer_token = false) {
