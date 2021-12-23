@@ -104,6 +104,11 @@ class LaCrosseViewData {
   }
 
 
+  public function getTimestamp() {
+    return $this->ts_now;
+  }
+
+
   public function getRawData() {
     return $this->raw_data;
   }
@@ -272,16 +277,16 @@ class LaCrosseViewData {
         return '°F';
         break;
       case 'kilometers_per_hour':
-        return ' kph';
+        return 'kph';
         break;
       case 'meters_per_second':
-        return ' mps';
+        return 'mps';
         break;
       case 'miles_per_hour':
-        return ' mph';
+        return 'mph';
         break;
       case 'millibars':
-        return ' mb';
+        return 'mb';
         break;
       case 'relative_humidity':
         return '%';
