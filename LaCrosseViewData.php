@@ -355,14 +355,6 @@ class LaCrosseViewData {
   }
 
 
-  // TO DO: Weather Underground posting
-  // public function sendObservationToWeatherUnderground($station_id, $station_key, $api_key, $json_obs) {}
-
-
-  // TO DO: Twitter posting
-  // public function sendObservationToTwitter($oauth, $tweet) {}
-
-
   private function curlGet($url, $bearer_token = false) {
     $handler = curl_init($url);
     curl_setopt($handler, CURLOPT_VERBOSE, false);
