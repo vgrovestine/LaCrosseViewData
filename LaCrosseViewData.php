@@ -355,6 +355,34 @@ class LaCrosseViewData {
   }
 
 
+  /* {ts, sensor, field, unit, measurement} */
+  public function dbSave($db_host, $db_user, $db_password, $db_schema, $db_table = 'wxobs') {
+    $db = mysqli_connect($db_host, $db_user, $db_password, $db_schema);
+    if(!$db) {
+      $this->dump(mysqli_connect_error(), false, true);
+    }
+    $sql_values = array();
+    foreach($this->agg_data as $datKey => $datVal) {
+      $sensor = $datKey;
+      foreach($datVal['fields'] as $fieldKey => $fieldVal) {
+        $field = $fieldKey;
+        $unit = $fieldVal['unit'];
+        foreach($fieldVal['source'] as $sourceKey => $sourceVal) {
+          $ts = $sourceVal['ts'];
+          $measurement = $sourceVal['measurement'];
+          $sql_values[] = '(' . $sourceVal['ts'] . ', \'' . $sensor . '\', \'' . $field . '\', \'' . $unit . '\', ' . $sourceVal['measurement'] . ')';
+        }
+      }
+    }
+    foreach($sql_values as $v) {
+      $sql = 'insert ignore into ' . $db_table . ' (ts, sensor, field, unit, measurement) values ' . $v;
+      $q = mysqli_query($db, $sql);
+      $this->dump(mysqli_error($db), false, true);
+    }
+    mysqli_close($db);
+  }
+
+
   private function curlGet($url, $bearer_token = false) {
     $handler = curl_init($url);
     curl_setopt($handler, CURLOPT_VERBOSE, false);
